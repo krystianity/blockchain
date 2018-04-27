@@ -19,10 +19,10 @@ Exposed interface through an HTTP API.
 
 ## API
 
-`POST /api/transactions/new`
-`POST /api/nodes/register`
-`GET /api/nodes/resolve`
-`GET /api/mine`
+* `POST /api/transactions/new`
+* `POST /api/nodes/register`
+* `GET /api/nodes/resolve`
+* `GET /api/mine`
 
 ## License
 
