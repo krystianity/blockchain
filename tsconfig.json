@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2017",
+    "sourceMap": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": false,
+    "strict": true,
+    "outDir": "dist/"
+  },
+  "exclude": [
+    "./coverage",
+    "./node_modules",
+    "./dist"
+  ]
+}
