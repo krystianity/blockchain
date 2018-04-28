@@ -1,8 +1,10 @@
-import Blockchain from "./Blockchain";
-import {getSHA256Hash} from "./utils";
-
 import * as Debug from "debug";
 const debug = Debug("blockchain:handler");
+
+import Blockchain from "./Blockchain";
+import {getSHA256Hash} from "./utils";
+import BlockInterface from "./interfaces/BlockInterface";
+import TransactionInterface from "./interfaces/TransactionInterface";
 
 export default class BlockHandler {
 
@@ -19,7 +21,7 @@ export default class BlockHandler {
      * @param block
      * @returns {string} hash
      */
-    public hash(block: object): string {
+    public hash(block: BlockInterface): string {
         const blockString = JSON.stringify(block);
         return getSHA256Hash(blockString);
     }
@@ -30,9 +32,9 @@ export default class BlockHandler {
      * @param previousHash
      * @returns {object} created block
      */
-    public newBlock(proof: number, previousHash: string): object {
+    public newBlock(proof: number, previousHash: string): BlockInterface {
 
-        const block = {
+        const block: BlockInterface = {
             index: this.blockchain.getNextBlockIndex(),
             previousHash: previousHash || this.hash(this.lastBlock()),
             proof,
@@ -55,9 +57,9 @@ export default class BlockHandler {
      * @param payload transaction payload
      * @returns {number} index of the block that will hold this transaction
      */
-    public newTransaction(sender: string, recipient: string, amount: string, payload: object): number {
+    public newTransaction(sender: string, recipient: string, amount: string, payload: any): number {
 
-        const transaction = {
+        const transaction: TransactionInterface = {
             amount,
             payload,
             recipient,
@@ -74,7 +76,7 @@ export default class BlockHandler {
      * gets the last block of the chain
      * @returns {object} last block
      */
-    public lastBlock(): object {
+    public lastBlock(): BlockInterface {
         return this.blockchain.getLastBlock();
     }
 
@@ -113,7 +115,7 @@ export default class BlockHandler {
      * @param {Array<Block>} chain internal chain of blocks
      * @returns {boolean} returns true of the chain is valid
      */
-    public isChainValid(chain: any[]) {
+    public isChainValid(chain: BlockInterface[]) {
         let index = 1;
 
         while (index < chain.length) {

@@ -1,9 +1,9 @@
+import * as Debug from "debug";
+const debug = Debug("blockchain:app");
+
 import Blockchain from "./Blockchain";
 import HttpServer from "./http/HttpServer";
 import ConfigInterface from "./interfaces/ConfigInterface";
-
-import * as Debug from "debug";
-const debug = Debug("blockchain:app");
 
 export default class App {
 

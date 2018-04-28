@@ -1,10 +1,12 @@
-import BlockHandler from "./BlockHandler";
-import ConfigInterface from "./interfaces/ConfigInterface";
-import HttpClient from "./http/HttpClient";
-import {parseHost, getNodeIdentifier} from "./utils";
-
 import * as Debug from "debug";
 const debug = Debug("blockchain:blockchain");
+
+import BlockHandler from "./BlockHandler";
+import ConfigInterface from "./interfaces/ConfigInterface";
+import BlockInterface from "./interfaces/BlockInterface";
+import TransactionInterface from "./interfaces/TransactionInterface";
+import HttpClient from "./http/HttpClient";
+import {parseHost, getNodeIdentifier} from "./utils";
 
 export default class Blockchain {
 
@@ -12,8 +14,8 @@ export default class Blockchain {
   public blockHandler: BlockHandler;
   private config: ConfigInterface;
   private client: HttpClient;
-  private chain: any[];
-  private currentTransactions: any[];
+  private chain: BlockInterface[];
+  private currentTransactions: TransactionInterface[];
   private nodes: Set<string>;
 
   constructor(config: ConfigInterface) {
@@ -41,7 +43,7 @@ export default class Blockchain {
    * @param host node host
    * @returns {Array<object>} chain from the node
    */
-  public async fetchChainFromNode(host: string): Promise<any[]> {
+  public async fetchChainFromNode(host: string): Promise<BlockInterface[]> {
 
     debug("fetching chain from", host);
 
@@ -53,7 +55,7 @@ export default class Blockchain {
       });
 
       if (status === 200) {
-        const chain: any[] = body.chain;
+        const chain: BlockInterface[] = body.chain;
         return chain;
       }
 
@@ -75,7 +77,7 @@ export default class Blockchain {
 
     debug("resolving potential conflicts");
 
-    const fetchPromises: Array<Promise<any>> = [];
+    const fetchPromises: Array<Promise<BlockInterface[]>> = [];
     this.nodes.forEach((host) => {
       fetchPromises.push(this.fetchChainFromNode(host));
     });
@@ -83,8 +85,8 @@ export default class Blockchain {
     return Promise.all(fetchPromises).then((chains) => {
 
       // We're only looking for chains longer than ours
-      let newChain = null;
-      let maxLength = this.chain.length;
+      let newChain: BlockInterface[] = [];
+      let maxLength: number = this.chain.length;
 
       chains.forEach((chain) => {
         // Check if the length is longer and the chain is valid
@@ -153,7 +155,7 @@ export default class Blockchain {
     return this.nodes.size;
   }
 
-  public getChain(): any[] {
+  public getChain(): BlockInterface[] {
     return this.chain;
   }
 
@@ -165,11 +167,11 @@ export default class Blockchain {
     return this.chain.length;
   }
 
-  public getCurrentTransactions(): any[] {
+  public getCurrentTransactions(): TransactionInterface[] {
     return this.currentTransactions;
   }
 
-  public getLastBlock(): any {
+  public getLastBlock(): BlockInterface {
     return this.chain[this.chain.length - 1];
   }
 
@@ -181,11 +183,11 @@ export default class Blockchain {
     this.currentTransactions = [];
   }
 
-  public addBlock(block: object): void {
+  public addBlock(block: BlockInterface): void {
     this.chain.push(block);
   }
 
-  public addTransaction(transaction: object): void {
+  public addTransaction(transaction: TransactionInterface): void {
     this.currentTransactions.push(transaction);
   }
 
