@@ -89,11 +89,14 @@ export default class BlockHandler {
      * @returns {number} new proof
      */
     public proofOfWork(lastProof: number): number {
+        debug("searching for proof for", lastProof);
+        const startT = Date.now();
         let proof = 0;
         while (!this.isProofValid(lastProof, proof)) {
             proof++;
         }
-        debug("proofed work", lastProof, "as", proof);
+        const duration = Date.now() - startT;
+        debug("found proof", proof, "for previous", lastProof, "in", duration, "ms");
         return proof;
     }
 

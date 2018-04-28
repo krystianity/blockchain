@@ -184,6 +184,42 @@ describe("Blockchain INT", () => {
         });
     });
 
+    it("should be able to create a new transaction on 1 node again", async () => {
+
+        const {status, body} = await client.call({
+            url: "http://localhost:1337/api/transactions/new",
+            method: "POST",
+            headers: {
+                "content-type": "application/json"
+            },
+            body: JSON.stringify({
+                sender: getNodeIdentifier(),
+                recipient: getNodeIdentifier(),
+                amount: 1, 
+                payload: {}
+            })
+        });
+
+        assert.equal(status, 201);
+    });
+
+    it("should be able to mine another block on the first node", async () => {
+
+        const calls = ["7"].map(ipEnd => {
+            return client.call({
+                url: `http://localhost:133${ipEnd}/api/mine`,
+                method: "GET"
+            });
+        });
+
+        const results = await Promise.all(calls);
+
+        results.forEach(result => {
+            assert.equal(result.status, 201);
+            assert.ok(result.body.block);
+        });
+    });
+
     it("should be able to resolve conflicts", async () => {
 
         const calls = ["7", "8", "9"].map(ipEnd => {

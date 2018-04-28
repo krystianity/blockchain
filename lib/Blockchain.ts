@@ -17,6 +17,7 @@ export default class Blockchain {
   private chain: BlockInterface[];
   private currentTransactions: TransactionInterface[];
   private nodes: Set<string>;
+  private conflictResolvationRunning: boolean;
 
   constructor(config: ConfigInterface) {
     this.identifier = getNodeIdentifier();
@@ -26,6 +27,7 @@ export default class Blockchain {
     this.chain = [];
     this.currentTransactions = [];
     this.nodes = new Set();
+    this.conflictResolvationRunning = false;
   }
 
   /**
@@ -36,6 +38,15 @@ export default class Blockchain {
     const host: string = parseHost(address);
     this.nodes.add(host);
     debug("registering", host, "as new node");
+  }
+
+  /**
+   * removes a node from the node list
+   * @param address
+   */
+  public removeNode(address: string): void {
+    debug("removing node", address);
+    this.nodes.delete(address);
   }
 
   /**
@@ -52,6 +63,7 @@ export default class Blockchain {
       const {status, body} = await this.client.call({
         method: "GET",
         url: `http://${host}/api/chain`,
+        timeout: 5000,
       });
 
       if (status === 200) {
@@ -68,42 +80,123 @@ export default class Blockchain {
   }
 
   /**
-   * fetch all chains from known nodes and compare
-   * chains, choose the longest valid one, if larger then
-   * own
-   * @returns {Promise<boolean>} if chain was switched
+   * fetches chain length of other node
+   * @param host
+   */
+  public async fetchChainLengthFromNode(host: string): Promise<number> {
+
+    try {
+
+      const {status, body} = await this.client.call({
+        method: "GET",
+        url: `http://${host}/api/stats`,
+        timeout: 5000,
+      });
+
+      if (status === 200) {
+        debug("fetched chain length from", host, "is", body.length);
+        return body.length;
+      }
+
+      debug("failed to fetch chain lengthfrom node", host, status);
+      return -1;
+    } catch (error) {
+      debug("failed to fetch chain length node", host, error.message);
+      return -1;
+    }
+  }
+
+  /**
+   * resolve conflicts faster by only fetching the chain sizes
+   * from the nodes
    */
   public async resolveConflicts(): Promise<boolean> {
 
-    debug("resolving potential conflicts");
+    debug("resolving conflicts fast.");
 
-    const fetchPromises: Array<Promise<BlockInterface[]>> = [];
+    if (this.conflictResolvationRunning) {
+      debug("conflict resolvation still running.");
+      return false;
+    }
+    this.conflictResolvationRunning = true;
+
+    const resolveRecursive = async () => {
+
+      if (!this.getNodesCount()) {
+        debug("no more nodes left");
+        return false;
+      }
+
+      const {host} = await this.findLeadingNode();
+
+      if (host === null) {
+        debug("current node is leading node.");
+        return false;
+      }
+
+      const chain = await this.fetchChainFromNode(host);
+      if (!chain || !chain.length) {
+        // if fetch fails, remove node and try again
+        debug("fetch failed, removing node");
+        this.removeNode(host);
+        return resolveRecursive();
+      }
+
+      if (chain.length < this.getLength() && !this.blockHandler.isChainValid(chain)) {
+        debug("fetched chain is invalid, removing node");
+        this.removeNode(host);
+        return resolveRecursive();
+      }
+
+      this.chain = chain;
+      debug("replacing chain with", chain.length, "from", host);
+      return true;
+    };
+
+    return resolveRecursive().then((result) => {
+      this.conflictResolvationRunning = false;
+      return result;
+    }).catch((error) => {
+      this.conflictResolvationRunning = false;
+      debug("conflict resolvation failed with error", error.message);
+      return false;
+    });
+  }
+
+  /**
+   * searches for the leading node amonst all known nodes
+   * using their chains length
+   */
+  public async findLeadingNode(): Promise<{host: string|null, length: number}> {
+
+    debug("searching for leading node");
+
+    const fetchPromises: Array<Promise<{host: string, length: number}>> = [];
     this.nodes.forEach((host) => {
-      fetchPromises.push(this.fetchChainFromNode(host));
+      fetchPromises.push(this.fetchChainLengthFromNode(host).then((length) => {
+        return {
+          host,
+          length,
+        };
+      }));
     });
 
-    return Promise.all(fetchPromises).then((chains) => {
+    return Promise.all(fetchPromises).then((results) => {
 
-      // We're only looking for chains longer than ours
-      let newChain: BlockInterface[] = [];
-      let maxLength: number = this.chain.length;
+      let leadingHost: string|null = null;
+      let maxLength: number = this.getLength();
 
-      chains.forEach((chain) => {
-        // Check if the length is longer and the chain is valid
-        if (chain.length > maxLength && this.blockHandler.isChainValid(chain)) {
-          maxLength = chain.length;
-          newChain = chain;
-          debug("found longer chain", maxLength);
+      results.forEach(({host, length}) => {
+        if (length > maxLength) {
+          leadingHost = host;
+          maxLength = length;
         }
       });
 
-      // Replace our chain if we discovered a new, valid chain longer than ours
-      if (newChain) {
-        debug("replacing local chain");
-        this.chain = newChain;
-      }
-
-      return !!newChain;
+      return {
+        host: leadingHost,
+        length: maxLength,
+      };
     });
   }
 
@@ -127,6 +220,7 @@ export default class Blockchain {
         },
         method: "POST",
         url: `${host}/api/nodes/register`,
+        timeout: 5000,
       });
 
       if (status === 200) {
