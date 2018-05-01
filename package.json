@@ -16,18 +16,20 @@
     "test": "yarn build && DEBUG=blockchain:* ./node_modules/.bin/_mocha --recursive --timeout 5000 --exit -R spec test/int"
   },
   "dependencies": {
-    "bluebird": "~3.5.1",
     "body-parser": "~1.18.2",
     "cors": "~2.8.4",
     "crypto-js": "~3.1.9-1",
     "debug": "~3.1.0",
     "express": "~4.16.3",
+    "keypair": "^1.0.1",
     "request": "~2.85.0",
+    "sequelize": "~4.37.6",
+    "sqlite3": "~4.0.0",
     "uuid": "~3.2.1"
   },
   "devDependencies": {
     "@types/node": "~9.4.7",
-    "mocha": "^5.1.1",
+    "mocha": "~5.1.1",
     "tslint": "~5.9.1",
     "typescript": "~2.7.2"
   }

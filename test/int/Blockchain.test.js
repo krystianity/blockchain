@@ -1,40 +1,72 @@
 "use strict";
 
 const assert = require("assert");
+const path = require("path");
 
 const HttpClient = require("./../../dist/lib/http/HttpClient.js").default;
 const App = require("./../../dist/lib/App.js").default;
 const {getNodeIdentifier} = require("./../../dist/lib/utils/index.js");
 
-const config1 = {
+const config = {
+    advertisedHost: "",
+    blockchain: {
+        mintAddress: "0",
+        mintReward: 100,
+        difficulty: 4,
+    },
+    http: {
+        port: 8080,
+    },
+    addressOpts: {
+        bits: 512,
+        e: 65537,
+    },
+    database: {
+        database: "blockchain_test",
+        username: "root",
+        password: "toor",
+        storage: path.join(__dirname, "./../../dist/test.db"),
+    },
+};
+
+const config1 = Object.assign({}, config, {
     advertisedHost: "http://localhost:1337",
-    blockchain: {
-        difficulty: 4,
-    },
     http: {
-        port: 1337,
+        port: 1337
     },
-};
+    database: {
+        database: "blockchain_test",
+        username: "root",
+        password: "toor",
+        storage: path.join(__dirname, "./../../dist/blockchain1.db"),
+    },
+});
 
-const config2 = {
+const config2 = Object.assign({}, config, {
     advertisedHost: "http://localhost:1338",
-    blockchain: {
-        difficulty: 4,
-    },
     http: {
-        port: 1338,
+        port: 1338
     },
-};
+    database: {
+        database: "blockchain_test",
+        username: "root",
+        password: "toor",
+        storage: path.join(__dirname, "./../../dist/blockchain2.db"),
+    },
+});
 
-const config3 = {
+const config3 = Object.assign({}, config, {
     advertisedHost: "http://localhost:1339",
-    blockchain: {
-        difficulty: 4,
-    },
     http: {
-        port: 1339,
+        port: 1339
     },
-};
+    database: {
+        database: "blockchain_test",
+        username: "root",
+        password: "toor",
+        storage: path.join(__dirname, "./../../dist/blockchain3.db"),
+    },
+});
 
 describe("Blockchain INT", () => {
 
@@ -43,6 +75,8 @@ describe("Blockchain INT", () => {
     let app = null;
     let app2 = null;
     let app3 = null;
+    let clientAddress1 = null;
+    let clientAddress2 = null;
 
     before(async () => {
 
@@ -64,34 +98,34 @@ describe("Blockchain INT", () => {
     it("should be able to get chain 1 with first block", async () => {
 
         const {status, body} = await client.call({
-            url: "http://localhost:1337/api/chain",
+            url: "http://localhost:1337/api/peer/chain",
             method: "GET"
         });
 
         assert.equal(status, 200);
-        assert.equal(body.chain[0].index, 1);
+        assert.equal(body[0].blockindex, 1);
     });
 
     it("should be able to get chain 2 with first block", async () => {
 
         const {status, body} = await client.call({
-            url: "http://localhost:1338/api/chain",
+            url: "http://localhost:1338/api/peer/chain",
             method: "GET"
         });
 
         assert.equal(status, 200);
-        assert.equal(body.chain[0].index, 1);
+        assert.equal(body[0].blockindex, 1);
     });
 
     it("should be able to get chain 3 with first block", async () => {
 
         const {status, body} = await client.call({
-            url: "http://localhost:1339/api/chain",
+            url: "http://localhost:1339/api/peer/chain",
             method: "GET"
         });
 
         assert.equal(status, 200);
-        assert.equal(body.chain[0].index, 1);
+        assert.equal(body[0].blockindex, 1);
     });
 
     it("should be able to register nodes with themselves", async () => {
@@ -110,61 +144,150 @@ describe("Blockchain INT", () => {
         assert.equal(app3.blockchain.getNodesCount(), 2);
     });
 
-    it("should be able to create a new transaction on 1 node", async () => {
+    it("should be able to generate new address for client 1", async () => {
 
         const {status, body} = await client.call({
+            url: "http://localhost:1337/api/address/new",
+            method: "GET"
+        });
+
+        assert.equal(status, 200);
+        clientAddress1 = body.address;
+        assert.ok(clientAddress1.address);
+        assert.ok(clientAddress1.privateKey);
+    });
+
+    it("should be able to generate new address for client 2", async () => {
+
+        const {status, body} = await client.call({
+            url: "http://localhost:1337/api/address/new",
+            method: "GET"
+        });
+
+        assert.equal(status, 200);
+        clientAddress2 = body.address;
+        assert.ok(clientAddress2.address);
+        assert.ok(clientAddress2.privateKey);
+    });
+
+    it("should be able to create a new transaction on 1 node", async () => {
+
+        let transaction = {
+            sender: clientAddress1.address,
+            recipient: clientAddress2.address,
+            amount: 1, 
+            payload: "test 10313 0183 21803 1290301283 12931203019 23901209312809381203 123123 123123 15",
+            signature: "",
+            timestamp: Date.now()
+        };
+
+        let {status, body} = await client.call({
+            url: "http://localhost:1337/api/transactions/sign",
+            method: "POST",
+            headers: {
+                "content-type": "application/json"
+            },
+            body: JSON.stringify({
+                transaction,
+                address: clientAddress1.address,
+                privateKey: clientAddress1.privateKey
+            })
+        });
+
+        assert.equal(status, 200);
+        transaction = body.transaction;
+        assert.ok(transaction);
+
+        let {status: status2, body: body2} = await client.call({
             url: "http://localhost:1337/api/transactions/new",
             method: "POST",
             headers: {
                 "content-type": "application/json"
             },
-            body: JSON.stringify({
-                sender: getNodeIdentifier(),
-                recipient: getNodeIdentifier(),
-                amount: 1, 
-                payload: {}
-            })
+            body: JSON.stringify(transaction)
         });
 
-        assert.equal(status, 201);
+        assert.equal(status2, 201);
     });
 
     it("should be able to create a new transaction on 2 node", async () => {
 
-        const {status, body} = await client.call({
+        let transaction = {
+            sender: clientAddress1.address,
+            recipient: clientAddress2.address,
+            amount: 1, 
+            payload: "test",
+            signature: "",
+            timestamp: Date.now()
+        };
+
+        let {status, body} = await client.call({
+            url: "http://localhost:1338/api/transactions/sign",
+            method: "POST",
+            headers: {
+                "content-type": "application/json"
+            },
+            body: JSON.stringify({
+                transaction,
+                address: clientAddress1.address,
+                privateKey: clientAddress1.privateKey
+            })
+        });
+
+        assert.equal(status, 200);
+        transaction = body.transaction;
+        assert.ok(transaction);
+
+        let {status: status2, body: body2} = await client.call({
             url: "http://localhost:1338/api/transactions/new",
             method: "POST",
             headers: {
                 "content-type": "application/json"
             },
-            body: JSON.stringify({
-                sender: getNodeIdentifier(),
-                recipient: getNodeIdentifier(),
-                amount: 1, 
-                payload: {}
-            })
+            body: JSON.stringify(transaction)
         });
 
-        assert.equal(status, 201);
+        assert.equal(status2, 201);
     });
 
     it("should be able to create a new transaction on 3 node", async () => {
 
-        const {status, body} = await client.call({
-            url: "http://localhost:1339/api/transactions/new",
+        let transaction = {
+            sender: clientAddress1.address,
+            recipient: clientAddress2.address,
+            amount: 1, 
+            payload: "test",
+            signature: "",
+            timestamp: Date.now()
+        };
+
+        let {status, body} = await client.call({
+            url: "http://localhost:1339/api/transactions/sign",
             method: "POST",
             headers: {
                 "content-type": "application/json"
             },
             body: JSON.stringify({
-                sender: getNodeIdentifier(),
-                recipient: getNodeIdentifier(),
-                amount: 1, 
-                payload: {}
+                transaction,
+                address: clientAddress1.address,
+                privateKey: clientAddress1.privateKey
             })
         });
 
-        assert.equal(status, 201);
+        assert.equal(status, 200);
+        transaction = body.transaction;
+        assert.ok(transaction);
+
+        let {status: status2, body: body2} = await client.call({
+            url: "http://localhost:1339/api/transactions/new",
+            method: "POST",
+            headers: {
+                "content-type": "application/json"
+            },
+            body: JSON.stringify(transaction)
+        });
+
+        assert.equal(status2, 201);
     });
 
     it("should be able to mine blocks on all nodes", async () => {
@@ -186,21 +309,42 @@ describe("Blockchain INT", () => {
 
     it("should be able to create a new transaction on 1 node again", async () => {
 
-        const {status, body} = await client.call({
-            url: "http://localhost:1337/api/transactions/new",
+        let transaction = {
+            sender: clientAddress1.address,
+            recipient: clientAddress2.address,
+            amount: 1, 
+            payload: "test",
+            signature: "",
+            timestamp: Date.now()
+        };
+
+        let {status, body} = await client.call({
+            url: "http://localhost:1337/api/transactions/sign",
             method: "POST",
             headers: {
                 "content-type": "application/json"
             },
             body: JSON.stringify({
-                sender: getNodeIdentifier(),
-                recipient: getNodeIdentifier(),
-                amount: 1, 
-                payload: {}
+                transaction,
+                address: clientAddress1.address,
+                privateKey: clientAddress1.privateKey
             })
         });
 
-        assert.equal(status, 201);
+        assert.equal(status, 200);
+        transaction = body.transaction;
+        assert.ok(transaction);
+
+        let {status: status2, body: body2} = await client.call({
+            url: "http://localhost:1337/api/transactions/new",
+            method: "POST",
+            headers: {
+                "content-type": "application/json"
+            },
+            body: JSON.stringify(transaction)
+        });
+
+        assert.equal(status2, 201);
     });
 
     it("should be able to mine another block on the first node", async () => {
@@ -234,5 +378,60 @@ describe("Blockchain INT", () => {
         results.forEach(result => {
             assert.equal(result.status, 200);
         });
+
+        assert.equal(await app.blockchain.getLength(), 3);
+        assert.equal(await app2.blockchain.getLength(), 3);
+        assert.equal(await app3.blockchain.getLength(), 3);
+    });
+
+    it("should be able to see equal balances on all nodes", async () => {
+
+        const calls = ["7", "8", "9"].map(ipEnd => {
+            return client.call({
+                url: `http://localhost:133${ipEnd}/api/address/balance`,
+                method: "POST",
+                headers: {
+                    "content-type": "application/json"
+                },
+                body: JSON.stringify({
+                    address: clientAddress2.address
+                })
+            });
+        });
+
+        const results = await Promise.all(calls);
+
+        results.forEach(result => {
+            assert.equal(result.status, 200);
+            assert.equal(result.body.balance, 2);
+        });
+    });
+
+    it("should be able to see transactions for address", async () => {
+
+        const {status, body} = await client.call({
+            url: "http://localhost:1337/api/address/transactions",
+            method: "POST",
+            headers: {
+                "content-type": "application/json"
+            },
+            body: JSON.stringify({
+                address: clientAddress2.address
+            })
+        });
+
+        assert.equal(status, 200);
+        assert.equal(body.transactions.length, 2);
+    });
+
+    it("should be able to get last block", async () => {
+
+        const {status, body} = await client.call({
+            url: "http://localhost:1337/api/blocks/last",
+            method: "GET"
+        });
+
+        assert.equal(status, 200);
+        assert.ok(body.block);
     });
 });

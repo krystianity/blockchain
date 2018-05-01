@@ -1,4 +1,3 @@
-// import * as Promise from "bluebird";
 import * as request from "request";
 
 import HttpClientResponseInterface from "./../interfaces/HttpClientResponseInterface";

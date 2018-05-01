@@ -1,6 +1,8 @@
 export default interface TransactionInterface {
-    amount: string;
+    amount: number;
     recipient: string;
     sender: string;
-    payload: any;
+    payload: string;
+    signature?: string;
+    timestamp?: number;
 }

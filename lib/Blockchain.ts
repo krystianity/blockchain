@@ -2,108 +2,67 @@ import * as Debug from "debug";
 const debug = Debug("blockchain:blockchain");
 
 import BlockHandler from "./BlockHandler";
+import Signature from "./crypto/Signature";
+import Address from "./crypto/Address";
+import Database from "./db/Database";
 import ConfigInterface from "./interfaces/ConfigInterface";
 import BlockInterface from "./interfaces/BlockInterface";
 import TransactionInterface from "./interfaces/TransactionInterface";
-import HttpClient from "./http/HttpClient";
-import {parseHost, getNodeIdentifier} from "./utils";
+import Peer from "./Peer";
+import {parseHost} from "./utils";
+import AddressInterface from "./interfaces/AddressInterface";
 
 export default class Blockchain {
 
-  public identifier: string;
-  public blockHandler: BlockHandler;
   private config: ConfigInterface;
-  private client: HttpClient;
-  private chain: BlockInterface[];
+  public nodeAddress: AddressInterface;
+  public blockHandler: BlockHandler;
+  public signature: Signature;
+  public address: Address;
+  private db: Database;
   private currentTransactions: TransactionInterface[];
-  private nodes: Set<string>;
   private conflictResolvationRunning: boolean;
+  private p2p: Peer;
 
   constructor(config: ConfigInterface) {
-    this.identifier = getNodeIdentifier();
     this.config = config;
-    this.blockHandler = new BlockHandler(this, this.config.blockchain.difficulty);
-    this.client = new HttpClient();
-    this.chain = [];
+
+    const {difficulty, nodeAddress} = this.config.blockchain;
+
+    this.db = new Database(config);
+    this.blockHandler = new BlockHandler(this, this.db, difficulty);
+    this.signature = new Signature(config);
+    this.address = new Address(config);
+
+    // if no address is configured, generate a new one
+    this.nodeAddress = nodeAddress || this.address.createAddress();
     this.currentTransactions = [];
-    this.nodes = new Set();
     this.conflictResolvationRunning = false;
+    this.p2p = new Peer(config);
   }
 
   /**
-   * adds a new node to the node list
+   * adds a new node to the node list (is proxy function)
    * @param address address of the node e.g. http://localhost:1337
    */
   public registerNode(address: string): void {
-    const host: string = parseHost(address);
-    this.nodes.add(host);
-    debug("registering", host, "as new node");
+    this.p2p.registerNode(address);
   }
 
   /**
-   * removes a node from the node list
+   * removes a node from the node list (is proxy function)
    * @param address
    */
   public removeNode(address: string): void {
-    debug("removing node", address);
-    this.nodes.delete(address);
+   this.p2p.removeNode(address);
   }
 
   /**
-   * get a chain from another node
-   * @param host node host
-   * @returns {Array<object>} chain from the node
-   */
-  public async fetchChainFromNode(host: string): Promise<BlockInterface[]> {
-
-    debug("fetching chain from", host);
-
-    try {
-
-      const {status, body} = await this.client.call({
-        method: "GET",
-        url: `http://${host}/api/chain`,
-        timeout: 5000,
-      });
-
-      if (status === 200) {
-        const chain: BlockInterface[] = body.chain;
-        return chain;
-      }
-
-      debug("failed to fetch chain from node", host, status);
-      return [];
-    } catch (error) {
-      debug("failed to fetch chain from node", host, error.message);
-      return [];
-    }
-  }
-
-  /**
-   * fetches chain length of other node
+   * register this node on another using the advertised hostname (is proxy function)
    * @param host
    */
-  public async fetchChainLengthFromNode(host: string): Promise<number> {
-
-    try {
-
-      const {status, body} = await this.client.call({
-        method: "GET",
-        url: `http://${host}/api/stats`,
-        timeout: 5000,
-      });
-
-      if (status === 200) {
-        debug("fetched chain length from", host, "is", body.length);
-        return body.length;
-      }
-
-      debug("failed to fetch chain lengthfrom node", host, status);
-      return -1;
-    } catch (error) {
-      debug("failed to fetch chain length node", host, error.message);
-      return -1;
-    }
+  public async registerSelfAtOtherNode(host: string): Promise<boolean> {
+    return await this.p2p.registerSelfAtOtherNode(host);
   }
 
   /**
@@ -134,7 +93,7 @@ export default class Blockchain {
         return false;
       }
 
-      const chain = await this.fetchChainFromNode(host);
+      const chain = await this.p2p.fetchChainFromNode(host);
       if (!chain || !chain.length) {
         // if fetch fails, remove node and try again
         debug("fetch failed, removing node");
@@ -142,14 +101,26 @@ export default class Blockchain {
         return resolveRecursive();
       }
 
-      if (chain.length < this.getLength() && !this.blockHandler.isChainValid(chain)) {
+      const oldLength = await this.getLength();
+
+      // chain is too large to handle, store it in db first
+      // (TODO: this should be rebuild to streaming chunks for future scaling)
+      await this.db.replaceFullChain(chain);
+      debug("replacing chain with", chain.length, "from", host);
+
+      if (await this.getLength() < oldLength) {
+        debug("fetched chain is smaller than expected, removing node");
+        this.removeNode(host);
+        return resolveRecursive();
+      }
+
+      if (!this.blockHandler.isChainValid()) {
         debug("fetched chain is invalid, removing node");
         this.removeNode(host);
         return resolveRecursive();
       }
 
-      this.chain = chain;
-      debug("replacing chain with", chain.length, "from", host);
+      debug("fetched and exchanged chain is valid, synced with", host);
       return true;
     };
 
@@ -172,8 +143,8 @@ export default class Blockchain {
     debug("searching for leading node");
 
     const fetchPromises: Array<Promise<{host: string, length: number}>> = [];
-    this.nodes.forEach((host) => {
-      fetchPromises.push(this.fetchChainLengthFromNode(host).then((length) => {
+    this.p2p.nodes.forEach((host) => {
+      fetchPromises.push(this.p2p.fetchChainLengthFromNode(host).then((length) => {
         return {
           host,
           length,
@@ -181,10 +152,10 @@ export default class Blockchain {
       }));
     });
 
-    return Promise.all(fetchPromises).then((results) => {
+    return Promise.all(fetchPromises).then(async (results) => {
 
       let leadingHost: string|null = null;
-      let maxLength: number = this.getLength();
+      let maxLength: number = await this.getLength();
 
       results.forEach(({host, length}) => {
         if (length > maxLength) {
@@ -201,44 +172,64 @@ export default class Blockchain {
   }
 
   /**
-   * register this node on another using the advertised hostname
-   * @param host
-   * @returns {boolean} if the operation was successfull
+   * inform all other known nodes about the transaction
+   * @param transaction
+   * @param signature
    */
-  public async registerSelfAtOtherNode(host: string): Promise<boolean> {
+  public async publishTransactionToKnownNodes(transaction: TransactionInterface)
+    : Promise<boolean[]> {
 
-    debug("registering at other node", host);
+    const publishPromises: Array<Promise<boolean>> = [];
+    this.p2p.nodes.forEach((host) => {
+      publishPromises.push(this.p2p.publishTransaction(transaction, host));
+    });
 
-    try {
+    return Promise.all(publishPromises);
+  }
 
-      const {status, body} = await this.client.call({
-        body: JSON.stringify({
-          nodes: [this.config.advertisedHost],
-        }),
-        headers: {
-          "content-type": "application/json",
-        },
-        method: "POST",
-        url: `${host}/api/nodes/register`,
-        timeout: 5000,
-      });
+  /**
+   * inform all other nown nodes about the block
+   * @param block
+   */
+  public async publishBlockToKnownNodes(block: BlockInterface): Promise<boolean[]> {
 
-      if (status === 200) {
-        return true;
+    const publishPromises: Array<Promise<boolean>> = [];
+    this.p2p.nodes.forEach((host) => {
+      publishPromises.push(this.p2p.publishBlock(block, host));
+    });
+
+    return Promise.all(publishPromises);
+  }
+
+  public applyTransactionInformation(newTransaction: TransactionInterface): boolean {
+
+    let found = false;
+    this.currentTransactions.forEach((transaction) => {
+      if (newTransaction.sender === transaction.sender &&
+        newTransaction.recipient === transaction.recipient) {
+        found = true;
       }
+    });
 
-      debug("failed to register on node", host, status);
-      return false;
-    } catch (error) {
-      debug("failed to register on node", host, error.message);
+    if (found) {
+      debug("transaction already exists, wont add.");
       return false;
     }
+
+    debug("transaction does not exist, adding");
+    this.addTransaction(newTransaction);
+    return true;
+  }
+
+  public applyBlockInformation(block: BlockInterface): boolean {
+    // TODO: add block if it does not exist
+    return false;
   }
 
   public getNodesAsList(): string[] {
 
     const list: string[] = [];
-    this.nodes.forEach((host) => {
+    this.p2p.nodes.forEach((host) => {
       list.push(host);
     });
 
@@ -246,52 +237,121 @@ export default class Blockchain {
   }
 
   public getNodesCount(): number {
-    return this.nodes.size;
-  }
-
-  public getChain(): BlockInterface[] {
-    return this.chain;
+    return this.p2p.nodes.size;
   }
 
   public getBlockHandler(): BlockHandler {
     return this.blockHandler;
   }
 
-  public getLength(): number {
-    return this.chain.length;
+  public getDatabase(): Database {
+    return this.db;
+  }
+
+  /**
+   * db-proxy
+   */
+  public async getLength(): Promise<number> {
+    return this.db.getChainLength();
+  }
+
+  public async getNextBlockIndex(): Promise<number> {
+    return (await this.getLength()) + 1;
   }
 
   public getCurrentTransactions(): TransactionInterface[] {
     return this.currentTransactions;
   }
 
-  public getLastBlock(): BlockInterface {
-    return this.chain[this.chain.length - 1];
-  }
-
-  public getNextBlockIndex(): number {
-    return this.chain.length + 1;
-  }
-
   public clearTransactions(): void {
     this.currentTransactions = [];
   }
 
-  public addBlock(block: BlockInterface): void {
-    this.chain.push(block);
+  /**
+   * db-proxy
+   */
+  public async getLastBlock(): Promise<BlockInterface|null> {
+    return this.db.getLastBlock();
   }
 
-  public addTransaction(transaction: TransactionInterface): void {
+  /**
+   * db-proxy
+   */
+  public streamChainFromDB(): any {
+    return this.db.getWholeChain();
+  }
+
+  /**
+   * db proxy
+   * @param block
+   */
+  public async addBlock(block: BlockInterface): Promise<void> {
+    await this.db.storeBlock(block);
+  }
+
+  /**
+   * db proxy
+   * @param address
+   */
+  public async getAddressBalance(address: string): Promise<number> {
+    return await this.db.getBalanceOfAddress(address);
+  }
+
+  /**
+   * db proxy
+   * @param address
+   */
+  public async getAddressTransactions(address: string): Promise<TransactionInterface[]> {
+    return await this.db.getTransactionsOfAddress(address);
+  }
+
+  /**
+   * adds a new transaction and publishes it
+   * to the other known nodes
+   * @param transaction
+   * @param publish
+   */
+  public async addTransaction(transaction: TransactionInterface, publish: boolean = true): Promise<number> {
+
     this.currentTransactions.push(transaction);
+
+    if (publish) {
+      this.publishTransactionToKnownNodes(transaction).catch(() => {
+        // empty
+      });
+    }
+
+    return await this.getNextBlockIndex();
   }
 
   public async init(): Promise<void> {
 
-    // genesis block
-    this.blockHandler.newBlock(100, "1");
+    await this.db.init();
+
+    const lastBlock = await this.db.getLastBlock();
+
+    if (!lastBlock) {
+
+      this.addTransaction({
+        amount: 0,
+        sender: this.config.blockchain.mintAddress,
+        recipient: this.config.blockchain.mintAddress,
+        timestamp: Date.now(),
+        payload: "",
+        signature: "",
+      }, false);
+
+      await this.blockHandler.newBlock(100, "1");
+      debug("no block present, created genisis block");
+    } else {
+      debug("blocks present, wont create genisis block");
+    }
+
+    // in case that other nodes are configured, we can get updated
+    await this.resolveConflicts();
   }
 
   public close(): void {
-    // empty
+    this.db.close();
   }
 }
