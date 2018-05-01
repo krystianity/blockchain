@@ -18,6 +18,8 @@ export default class BlockHandler {
         this.blockchain = blockchain;
         this.db = db;
         this.proofRegex = this.buildRegex(difficulty || 4);
+
+        // TODO: BlockHandler <-> Blockchain relationship could be refactored
     }
 
     /**
@@ -52,7 +54,7 @@ export default class BlockHandler {
         debug("creating new block");
 
         this.blockchain.clearTransactions();
-        await this.blockchain.addBlock(block);
+        await this.blockchain.storeBlock(block);
         return block;
     }
 
@@ -96,11 +98,37 @@ export default class BlockHandler {
     }
 
     /**
+     * validates a block and its transactions
+     * @param block
+     */
+    public isBlockValid(block: BlockInterface): boolean {
+
+        if (!block || !block.previousHash || !block.proof ||
+            !block.transactions || !block.transactions.length) {
+            debug("block is invalid");
+            return false;
+        }
+
+        let invalidTransactionFound = false;
+        block.transactions.forEach((transaction) => {
+            if (!this.blockchain.signature.verifyTransactionSignature(transaction)) {
+                invalidTransactionFound = true;
+            }
+        });
+
+        if (invalidTransactionFound) {
+            debug("block contains invalid transaction");
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * checks if the current chain is valid
      */
-    public isChainValid() {
+    public async isChainValid(chain: BlockInterface[]) {
 
-        /*
         let index = 1;
         while (index < chain.length) {
             const previousBlock = chain[index - 1];
@@ -118,7 +146,6 @@ export default class BlockHandler {
 
             index++;
         }
-        */
 
         return true;
     }

@@ -111,7 +111,7 @@ export default class HttpServer {
 
       this.blockchain.addTransaction(transaction, false);
       const previousHash = this.blockHandler.hash(lastBlock);
-      const block = this.blockHandler.newBlock(proof, previousHash);
+      const block = this.blockchain.addBlock(proof, previousHash);
 
       res.status(201).json({
         block,
@@ -251,7 +251,7 @@ export default class HttpServer {
     this.app.post("/api/peer/block", async (req, res) => {
 
       const block: BlockInterface = req.body.block;
-      const applied = this.blockchain.applyBlockInformation(block);
+      const applied = await this.blockchain.applyBlockInformation(block);
 
       res.status(200).json({
         applied,

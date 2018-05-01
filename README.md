@@ -14,6 +14,10 @@ PoW Blockchain implementation in TypeScript.
 * All node operations are call-able via HTTP API
 * Chain backed to disk via SQLite3 **easily swapable with a different backend**
 
+## Description
+
+TBD
+
 ## Use
 
 ### Prepare
@@ -55,3 +59,13 @@ PoW Blockchain implementation in TypeScript.
 ## License
 
 Apache License 2.0
+
+## Further Scaling Oppertunities
+
+* During conflict resolvation the servering node streams TransferInterface to the
+fetching client node, but currently the client node does not stream insert the
+blockchain.
+* Currently the blockchain validation function is based on a full in memory process,
+to scale further this needs to either be chunked/streamed or based on a db process.
+* The balance of a sender should be checked when a transaction is made and when
+such a transaction is received by another node via peer communcation

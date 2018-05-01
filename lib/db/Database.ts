@@ -8,6 +8,7 @@ import ConfigInterface from "../interfaces/ConfigInterface";
 import BlockInterface from "../interfaces/BlockInterface";
 import TransactionInterface from "../interfaces/TransactionInterface";
 import TransferInterface from "../interfaces/TransferInterface";
+import BlockHeaderInterface from "../interfaces/BlockHeaderInterface";
 
 export default class Database {
 
@@ -139,7 +140,7 @@ export default class Database {
                 sender: row.recipient,
                 payload: row.payload,
                 signature: row.signature,
-                timestamp: row.timestamp.valueOf(),
+                timestamp: row.timestamp ? row.timestamp.valueOf() : -1,
             };
 
             return transaction;
@@ -149,7 +150,7 @@ export default class Database {
             index,
             previousHash: rows[0].previoushash,
             proof: rows[0].proof,
-            timestamp: rows[0].blocktimestamp.valueOf(),
+            timestamp: rows[0].blocktimestamp ? rows[0].blocktimestamp.valueOf() : -1,
             transactions,
         };
 
@@ -257,6 +258,81 @@ export default class Database {
         }
 
         return await this.getBlock(highestIndex);
+    }
+
+    public async getBlockHeaders(): Promise<BlockHeaderInterface[]> {
+
+        const query = "SELECT DISTINCT(blockindex) AS blockindex," +
+        " previoushash, proof, blocktimestamp FROM chain;";
+
+        const rows = await this.sequelize.query(query, { type: Sequelize.QueryTypes.SELECT});
+
+        return rows.map((row) => {
+
+            const header: BlockHeaderInterface = {
+                index: row.blockindex,
+                previousHash: row.previoushash,
+                proof: row.proof,
+                timestamp: row.timestamp ? row.timestamp.valueOf() : null,
+            };
+
+            return header;
+        });
+    }
+
+    public async getFullDBAsBlocks(): Promise<BlockInterface[]> {
+
+        const rows = await this.models.chain.findAll();
+
+        const buffer = {};
+        const blocks: BlockInterface[] = [];
+
+        rows.forEach((row) => {
+            const res = row.get();
+
+            const transaction: TransactionInterface = {
+                recipient: res.recipient,
+                sender: res.sender,
+                payload: res.payload,
+                signature: res.signature,
+                timestamp: res.timestamp,
+                amount: res.amount,
+            };
+
+            if (!buffer[res.blockindex]) {
+
+                const block: BlockInterface = {
+                    index: res.blockindex,
+                    previousHash: res.previoushash,
+                    proof: res.proof,
+                    timestamp: res.blocktimestamp ? res.blocktimestamp.valueOf() : null,
+                    transactions: [],
+                };
+
+                buffer[res.blockindex] = block;
+            }
+
+            buffer[res.blockindex].transactions.push(transaction);
+        });
+
+        return Object.keys(buffer).map((index) => {
+            return buffer[index];
+        });
+    }
+
+    public async checkIfBlockExists(block: BlockInterface): Promise<boolean> {
+
+        const rows = await this.models.chain.findAll({
+            where: {
+                previoushash: block.previousHash,
+            },
+        });
+
+        if (rows && rows.length > 0) {
+            return true;
+        }
+
+        return false;
     }
 
     public close(): void {

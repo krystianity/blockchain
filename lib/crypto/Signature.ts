@@ -66,7 +66,7 @@ export default class Signature {
 
     public verifyTransactionSignature(transaction: TransactionInterface): boolean {
 
-        if (!transaction || !transaction.signature) {
+        if (!transaction || typeof transaction.signature === "undefined") {
             return false;
         }
 

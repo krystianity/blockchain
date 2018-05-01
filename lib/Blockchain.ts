@@ -106,15 +106,20 @@ export default class Blockchain {
       // chain is too large to handle, store it in db first
       // (TODO: this should be rebuild to streaming chunks for future scaling)
       await this.db.replaceFullChain(chain);
-      debug("replacing chain with", chain.length, "from", host);
+      const newLength = await this.getLength();
+      debug("replacing chain with", newLength, "from", host);
 
-      if (await this.getLength() < oldLength) {
+      if (newLength < oldLength) {
         debug("fetched chain is smaller than expected, removing node");
         this.removeNode(host);
         return resolveRecursive();
       }
 
-      if (!this.blockHandler.isChainValid()) {
+      // TODO: fetching the whole chain will not scale
+      // fetching headers will also not help, as the transactions
+      // are needed to create the hash to compare to the following block
+      const blockchain = await this.db.getFullDBAsBlocks();
+      if (!this.blockHandler.isChainValid(blockchain)) {
         debug("fetched chain is invalid, removing node");
         this.removeNode(host);
         return resolveRecursive();
@@ -221,9 +226,20 @@ export default class Blockchain {
     return true;
   }
 
-  public applyBlockInformation(block: BlockInterface): boolean {
-    // TODO: add block if it does not exist
-    return false;
+  public async applyBlockInformation(block: BlockInterface): Promise<boolean> {
+
+    if (this.blockHandler.isBlockValid(block)) {
+      return false;
+    }
+
+    if (await this.db.checkIfBlockExists(block)) {
+      debug("block already exists");
+      return false;
+    }
+
+    await this.db.storeBlock(block);
+    debug("stored block from other node");
+    return true;
   }
 
   public getNodesAsList(): string[] {
@@ -285,7 +301,7 @@ export default class Blockchain {
    * db proxy
    * @param block
    */
-  public async addBlock(block: BlockInterface): Promise<void> {
+  public async storeBlock(block: BlockInterface): Promise<void> {
     await this.db.storeBlock(block);
   }
 
@@ -303,6 +319,22 @@ export default class Blockchain {
    */
   public async getAddressTransactions(address: string): Promise<TransactionInterface[]> {
     return await this.db.getTransactionsOfAddress(address);
+  }
+
+  /**
+   * creates a new block (stores it in database) and publishes it
+   */
+  public async addBlock(proof: number, previousHash: string, publish: boolean = true): Promise<BlockInterface> {
+
+    const block = await this.blockHandler.newBlock(proof, previousHash);
+
+    if (publish) {
+      this.publishBlockToKnownNodes(block).catch(() => {
+        // empty
+      });
+    }
+
+    return block;
   }
 
   /**
