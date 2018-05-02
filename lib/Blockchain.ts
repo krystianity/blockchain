@@ -41,6 +41,20 @@ export default class Blockchain {
     this.p2p = new Peer(config);
   }
 
+  private removeTransactionForSignature(signature?: string): boolean {
+
+    let i = 0;
+    for (const transaction of this.currentTransactions) {
+      if (transaction.signature === signature) {
+        this.currentTransactions.splice(i, 1);
+        return true;
+      }
+      i++;
+    }
+
+    return false;
+  }
+
   /**
    * adds a new node to the node list (is proxy function)
    * @param address address of the node e.g. http://localhost:1337
@@ -55,6 +69,13 @@ export default class Blockchain {
    */
   public removeNode(address: string): void {
    this.p2p.removeNode(address);
+  }
+
+  /**
+   * returns false if this node is currently busy
+   */
+  public doesAcceptOperations(): boolean {
+    return !this.conflictResolvationRunning;
   }
 
   /**
@@ -228,17 +249,24 @@ export default class Blockchain {
 
   public async applyBlockInformation(block: BlockInterface): Promise<boolean> {
 
-    if (this.blockHandler.isBlockValid(block)) {
+    if (!this.blockHandler.isBlockValid(block)) {
+      debug("block from other node is invalid, wont add", block.index);
       return false;
     }
 
     if (await this.db.checkIfBlockExists(block)) {
-      debug("block already exists");
+      debug("block already exists", block.index);
       return false;
     }
 
+    // remove all transactions of this block from the current transactions
+    // of the next block of this node, in case there are any
+    block.transactions.forEach((transaction) => {
+      this.removeTransactionForSignature(transaction.signature);
+    });
+
     await this.db.storeBlock(block);
-    debug("stored block from other node");
+    debug("added block from other node", block.index);
     return true;
   }
 

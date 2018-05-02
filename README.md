@@ -1,26 +1,24 @@
 # blockchain
 
-PoW Blockchain implementation in TypeScript.
+Fully fledged PoW blockchain implementation in TypeScript.
 
 ## Features/Setup
 
 * Proof of Work __(similar to Bitcoin's Hashcash)__
 * Consensus __(similar to Bitcoin's longest chain)__
-* Node P2P communication via HTTP/S
+* Implemented Node P2P communication via HTTP/S (register, transaction, blocks)
 * Addresses in RSA PEM 1024/2048 **easily swapable with e.g. elliptic curves**
 * Transaction SHA256 signature validation
-* Transactions with additional Payload field
 * SHA256 Block Hashes
 * All node operations are call-able via HTTP API
-* Chain backed to disk via SQLite3 **easily swapable with a different backend**
-
-## Description
-
-TBD
+* Chain backed to disk in nodes via SQLite3 **easily swapable with a different backend**
 
 ## Use
 
 ### Prepare
+
+Requires [Node.js](https://nodejs.org/en/) > 8.x.x
+and yarn (`npm i -g yarn`).
 
 `yarn`
 
@@ -30,9 +28,17 @@ TBD
 
 ### Test
 
-`yarn test`
+3 Node Network E2E Tests
 
-## API
+### P2P Protocol
+
+`yarn test:p2p`
+
+### Consensus Algorithm
+
+`yarn test:consensus`
+
+## HTTP Node API
 
 ### Client Facing
 
@@ -68,4 +74,8 @@ blockchain.
 * Currently the blockchain validation function is based on a full in memory process,
 to scale further this needs to either be chunked/streamed or based on a db process.
 * The balance of a sender should be checked when a transaction is made and when
-such a transaction is received by another node via peer communcation
+such a transaction is received by another node via peer communcation (requires a single function call)
+* Additional hardening might be needed in case of blocks that are mined at the exact same time
+* Addresses should be switched to elliptic curves to generate and sign faster
+* SQLite3 should be switched with a more scaleable database
+* Nodes should constantly extend their known nodes, by asking for other registered nodes (easily implemented)

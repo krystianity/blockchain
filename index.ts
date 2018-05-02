@@ -11,6 +11,7 @@ const config = {
         mintAddress: "0",
         mintReward: 100,
         difficulty: 4,
+        protocol: "http://",
     },
     http: {
         port: 1337,

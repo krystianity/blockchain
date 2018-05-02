@@ -13,6 +13,7 @@ const config = {
         mintAddress: "0",
         mintReward: 100,
         difficulty: 4,
+        protocol: "http://",
     },
     http: {
         port: 8080,
@@ -68,7 +69,9 @@ const config3 = Object.assign({}, config, {
     },
 });
 
-describe("Blockchain INT", () => {
+const testName = "Blockchain INT " + (process.env.CONSENSUS_TEST ? "CONSENSUS" : "P2P");
+
+describe(testName, () => {
 
     const client = new HttpClient();
 
@@ -290,9 +293,9 @@ describe("Blockchain INT", () => {
         assert.equal(status2, 201);
     });
 
-    it("should be able to mine blocks on all nodes", async () => {
+    it("should be able to mine blocks on node:1", async () => {
 
-        const calls = ["7", "8", "9"].map(ipEnd => {
+        const calls = ["7"].map(ipEnd => {
             return client.call({
                 url: `http://localhost:133${ipEnd}/api/mine`,
                 method: "GET"
@@ -305,6 +308,52 @@ describe("Blockchain INT", () => {
             assert.equal(result.status, 201);
             assert.ok(result.body.block);
         });
+    });
+
+    it("should await node:1 block publishing", done => {
+        setTimeout(done, 1000);
+    });
+
+    it("should be able to mine blocks on node:2", async () => {
+
+        const calls = ["8"].map(ipEnd => {
+            return client.call({
+                url: `http://localhost:133${ipEnd}/api/mine`,
+                method: "GET"
+            });
+        });
+
+        const results = await Promise.all(calls);
+
+        results.forEach(result => {
+            assert.equal(result.status, 201);
+            assert.ok(result.body.block);
+        });
+    });
+
+    it("should await node:2 block publishing", done => {
+        setTimeout(done, 1000);
+    });
+
+    it("should be able to mine blocks on node:3", async () => {
+
+        const calls = ["9"].map(ipEnd => {
+            return client.call({
+                url: `http://localhost:133${ipEnd}/api/mine`,
+                method: "GET"
+            });
+        });
+
+        const results = await Promise.all(calls);
+
+        results.forEach(result => {
+            assert.equal(result.status, 201);
+            assert.ok(result.body.block);
+        });
+    });
+
+    it("should await node:3 block publishing", done => {
+        setTimeout(done, 1000);
     });
 
     it("should be able to create a new transaction on 1 node again", async () => {
@@ -364,9 +413,15 @@ describe("Blockchain INT", () => {
         });
     });
 
-    it("should be able to resolve conflicts", async () => {
+    if(!process.env.CONSENSUS_TEST){
+        it("should await node:1 second block publishing", done => {
+            setTimeout(done, 1000);
+        });
+    }
 
-        const calls = ["7", "8", "9"].map(ipEnd => {
+    it("should be able to resolve conflicts node:1", async () => {
+
+        const calls = ["7"].map(ipEnd => {
             return client.call({
                 url: `http://localhost:133${ipEnd}/api/nodes/resolve`,
                 method: "GET"
@@ -379,9 +434,43 @@ describe("Blockchain INT", () => {
             assert.equal(result.status, 200);
         });
 
-        assert.equal(await app.blockchain.getLength(), 3);
-        assert.equal(await app2.blockchain.getLength(), 3);
-        assert.equal(await app3.blockchain.getLength(), 3);
+        assert.equal(await app.blockchain.getLength(), 5);
+    });
+
+    it("should be able to resolve conflicts node:2", async () => {
+
+        const calls = ["8"].map(ipEnd => {
+            return client.call({
+                url: `http://localhost:133${ipEnd}/api/nodes/resolve`,
+                method: "GET"
+            });
+        });
+
+        const results = await Promise.all(calls);
+
+        results.forEach(result => {
+            assert.equal(result.status, 200);
+        });
+
+        assert.equal(await app2.blockchain.getLength(), 5);
+    });
+
+    it("should be able to resolve conflicts node:3", async () => {
+
+        const calls = ["9"].map(ipEnd => {
+            return client.call({
+                url: `http://localhost:133${ipEnd}/api/nodes/resolve`,
+                method: "GET"
+            });
+        });
+
+        const results = await Promise.all(calls);
+
+        results.forEach(result => {
+            assert.equal(result.status, 200);
+        });
+
+        assert.equal(await app3.blockchain.getLength(), 5);
     });
 
     it("should be able to see equal balances on all nodes", async () => {
@@ -403,7 +492,7 @@ describe("Blockchain INT", () => {
 
         results.forEach(result => {
             assert.equal(result.status, 200);
-            assert.equal(result.body.balance, 2);
+            assert.equal(result.body.balance, 4);
         });
     });
 
@@ -421,7 +510,7 @@ describe("Blockchain INT", () => {
         });
 
         assert.equal(status, 200);
-        assert.equal(body.transactions.length, 2);
+        assert.equal(body.transactions.length, 4);
     });
 
     it("should be able to get last block", async () => {

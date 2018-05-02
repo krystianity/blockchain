@@ -105,7 +105,6 @@ export default class BlockHandler {
 
         if (!block || !block.previousHash || !block.proof ||
             !block.transactions || !block.transactions.length) {
-            debug("block is invalid");
             return false;
         }
 

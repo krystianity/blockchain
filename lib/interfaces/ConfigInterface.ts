@@ -6,6 +6,7 @@ export default interface ConfigInterface {
     mintReward: number;
     difficulty?: number,
     nodeAddress?: AddressInterface;
+    protocol: string;
   };
   http: {
     port?: number,

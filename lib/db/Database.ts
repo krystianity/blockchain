@@ -183,6 +183,8 @@ export default class Database {
 
     public async getBalanceOfAddress(address: string): Promise<number> {
 
+        // TODO: its possible to aggregate this directly in the database
+
         const transactions = await this.getTransactionsOfAddress(address);
 
         if (!transactions || !transactions.length) {
@@ -204,7 +206,7 @@ export default class Database {
     public async replaceFullChain(blockchain: TransactionInterface[]): Promise<void> {
         // TODO: this should be changed into a chunk processing to scale
         await this.models.chain.truncate();
-        await this.models.chain.bulkCreate(blockchain);
+        await this.models.chain.bulkCreate(blockchain.filter((block) => !!block));
     }
 
     public getWholeChain(limit: number = 20): EventEmitter {

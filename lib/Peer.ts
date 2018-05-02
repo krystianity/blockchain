@@ -1,5 +1,5 @@
 import * as Debug from "debug";
-const debug = Debug("blockchain:blockchain");
+const debug = Debug("blockchain:peer");
 
 import BlockHandler from "./BlockHandler";
 import ConfigInterface from "./interfaces/ConfigInterface";
@@ -20,7 +20,7 @@ export default class Peer {
     this.config = config;
     this.client = new HttpClient();
     this.nodes = new Set();
-    this.proto = "http://";
+    this.proto = this.config.blockchain.protocol;
   }
 
   /**
@@ -121,6 +121,7 @@ export default class Peer {
       });
 
       if (status === 200) {
+        debug("registered self at other node", host);
         return true;
       }
 
@@ -155,7 +156,11 @@ export default class Peer {
         });
 
         if (status === 200) {
+            debug("published transaction to other node", host);
             return true;
+        } else if (status === 503) {
+          debug("other node is busy", host);
+          return false;
         }
 
         debug("failed to publish transaction to other node", host, status);
@@ -190,7 +195,11 @@ export default class Peer {
         });
 
         if (status === 200) {
+            debug("published block to other node", host);
             return true;
+        } else if (status === 503) {
+          debug("other node is busy", host);
+          return false;
         }
 
         debug("failed to publish block to other node", host, status);

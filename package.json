@@ -13,7 +13,9 @@
     "lint": "tslint -c tslint.json '**/*.ts'",
     "ts:build": "rm -rf dist/ && tsc -p tsconfig.json",
     "prepublishOnly": "yarn build",
-    "test": "yarn build && DEBUG=blockchain:* ./node_modules/.bin/_mocha --recursive --timeout 5000 --exit -R spec test/int"
+    "test": "yarn test:p2p && yarn test:consensus",
+    "test:p2p": "yarn build && DEBUG=blockchain:silence ./node_modules/.bin/_mocha --recursive --timeout 5000 --exit -R spec test/int",
+    "test:consensus": "yarn build && DEBUG=blockchain:silence CONSENSUS_TEST=1 ./node_modules/.bin/_mocha --recursive --timeout 5000 --exit -R spec test/int"
   },
   "dependencies": {
     "body-parser": "~1.18.2",

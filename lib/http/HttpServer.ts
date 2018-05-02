@@ -52,6 +52,17 @@ export default class HttpServer {
     this.app.use(cors());
     this.app.use(bodyParser.json({extended: false}));
 
+    this.app.use((req, res, next) => {
+
+      if (!this.blockchain.doesAcceptOperations()) {
+        return res.status(503).json({
+          error: "This node is currently busy.",
+        });
+      }
+
+      next();
+    });
+
     this.app.get("/", (req, res) => {
       res.status(200).end("BLOCKCHAIN");
     });
