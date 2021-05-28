@@ -26,7 +26,7 @@ export default class Database {
         debug("initialising..");
         const {database, username, password, storage} = this.config.database;
 
-        this.sequelize = new Sequelize(database, username, password, {
+        this.sequelize = new Sequelize.Sequelize(database, username, password, {
             dialect: "sqlite",
             storage,
             logging: (query) => {
@@ -122,11 +122,12 @@ export default class Database {
 
     public async getBlock(index: number): Promise<BlockInterface|null> {
 
-        const rows: TransferInterface[] = await this.models.chain.findAll({
+        
+        const rows: TransferInterface[] = (await this.models.chain.findAll({
             where: {
                 blockindex: index,
             },
-        }).map((row) => row.get());
+        })).map((row) => row.get());
 
         if (!rows || !rows.length) {
             return null;

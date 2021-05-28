@@ -1,3 +1,3 @@
-import * as uuid from "uuid/v4";
+import uuid from "uuid";
 
-export const getNodeIdentifier = () => uuid().replace(/-/g, "");
+export const getNodeIdentifier = () => uuid.v4().replace(/-/g, "");

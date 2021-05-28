@@ -28,7 +28,8 @@ export default class Address {
         debug("creating new address..");
         const startT = Date.now();
 
-        const pair = keypair(this.config.addressOpts);
+        const k: any = keypair;
+        const pair = k(this.config.addressOpts);
         const address: AddressInterface = {
             address: pair.public.substr(PUBLIC_SOF_LENGTH,
                 pair.public.length - PUBLIC_EOF_LENGTH - PUBLIC_SOF_LENGTH),
